@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}SIGAA Pokémon{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+          colors: {
+            sigaa: { 50: '#eef4fb', 100: '#d6e4f5', 500: '#2f5d99', 600: '#234b80', 700: '#1a3a66', 800: '#132b4d', 900: '#0c1d36' },
+            poke: { 400: '#f25c5c', 500: '#e3350d', 600: '#c22b08' },
+          },
+        },
+      },
+    };
+  </script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='46' fill='white' stroke='%23222' stroke-width='8'/><path d='M4 50a46 46 0 0 1 92 0z' fill='%23e3350d' stroke='%23222' stroke-width='8'/><circle cx='50' cy='50' r='13' fill='white' stroke='%23222' stroke-width='8'/></svg>">
+  <style type="text/tailwindcss">
+    .cartao { @apply bg-white rounded-2xl shadow-sm ring-1 ring-slate-200; }
+    .rotulo { @apply text-xs font-semibold uppercase tracking-wide text-slate-500; }
+    .campo { @apply w-full rounded-xl border-0 bg-white px-4 py-2.5 text-sm ring-1 ring-slate-300 focus:outline-none focus:ring-2 focus:ring-sigaa-500; }
+    .botao { @apply inline-flex items-center justify-center gap-2 rounded-xl bg-sigaa-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sigaa-700 disabled:cursor-wait disabled:opacity-60; }
+    .botao-sec { @apply inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-sigaa-700 ring-1 ring-slate-300 transition hover:bg-sigaa-50 disabled:cursor-wait disabled:opacity-60; }
+  </style>
+  <style>
+    body { background: radial-gradient(circle at 10% -10%, #dbe8f8 0, transparent 45%), #f4f7fb; }
+    .fade-in { animation: fade .35s ease both; }
+    @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .pixel { image-rendering: pixelated; }
+  </style>
+</head>
+<body class="min-h-screen font-sans text-slate-800 antialiased">
+  <header class="bg-gradient-to-r from-sigaa-800 via-sigaa-700 to-sigaa-600 text-white shadow-lg">
+    <div class="mx-auto max-w-6xl px-4">
+      <div class="flex items-center gap-3 py-4">
+        <svg viewBox="0 0 100 100" class="h-10 w-10 shrink-0 drop-shadow">
+          <circle cx="50" cy="50" r="46" fill="white" stroke="#0c1d36" stroke-width="7"/>
+          <path d="M4 50a46 46 0 0 1 92 0z" fill="#e3350d" stroke="#0c1d36" stroke-width="7"/>
+          <circle cx="50" cy="50" r="13" fill="white" stroke="#0c1d36" stroke-width="7"/>
+        </svg>
+        <div>
+          <div class="text-xl font-extrabold tracking-tight">SIGAA <span class="text-poke-400">Pokémon</span></div>
+          <div class="text-xs text-sigaa-100">Sistema Integrado de Gestão de Atividades Acadêmicas · 2026.2</div>
+        </div>
+      </div>
+      <nav class="-mb-px flex gap-1 overflow-x-auto text-sm font-medium">
+        {% set abas = [('busca', '/', 'Aluno'), ('turmas', '/turmas', 'Matrícula em turmas'), ('ranking', '/ranking', 'Ranking IRA'), ('benchmark', '/benchmark', 'Benchmark')] %}
+        {% for id, href, rotulo in abas %}
+          <a href="{{ href }}" class="whitespace-nowrap rounded-t-lg px-4 py-2.5 transition {{ 'bg-[#f4f7fb] text-sigaa-800' if ativo == id else 'text-sigaa-100 hover:bg-white/10' }}">{{ rotulo }}</a>
+        {% endfor %}
+      </nav>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-6xl px-4 py-8">
+    {% block conteudo %}{% endblock %}
+  </main>
+
+  <footer class="mx-auto max-w-6xl px-4 pb-10 text-center text-xs text-slate-400">
+    G31 · Estruturas de Dados 2 · Ordenação — Ana Luisa Vieira Nunes &amp; João Marcos Moraes de Andrade
+  </footer>
+
+  <div id="toast" class="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl px-4 py-3 text-sm font-medium text-white opacity-0 shadow-lg transition"></div>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

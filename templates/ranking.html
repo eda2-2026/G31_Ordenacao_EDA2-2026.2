@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block titulo %}Ranking IRA · SIGAA Pokémon{% endblock %}
+{% block conteudo %}
+<div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+  <div>
+    <h1 class="text-2xl font-extrabold tracking-tight text-sigaa-900">Ranking de IRA</h1>
+    <p class="mt-1 text-sm text-slate-500">A base inteira (ou só um curso) ordenada por IRA, do maior para o menor.</p>
+  </div>
+  <form id="filtros" class="flex flex-col gap-2 sm:flex-row">
+    <select id="curso" class="campo">
+      <option value="">Todos os cursos</option>
+      {% for c in cursos %}<option>{{ c }}</option>{% endfor %}
+    </select>
+    <select id="algoritmo" class="campo">
+      {% for id, alg in algoritmos.items() %}<option value="{{ id }}" {{ 'selected' if id == 'heap' }}>{{ alg.nome }}</option>{% endfor %}
+    </select>
+    <button class="botao shrink-0">Ordenar</button>
+  </form>
+</div>
+
+<div id="metricas" class="mt-6 text-sm text-slate-500"></div>
+<div id="podio" class="mt-4 grid gap-4 sm:grid-cols-3"></div>
+<section class="cartao mt-6 overflow-hidden">
+  <ol id="lista" class="divide-y divide-slate-100"></ol>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const medalhas = ['🥇', '🥈', '🥉'];
+
+async function carregar(botao) {
+  const curso = document.getElementById('curso').value;
+  const alg = document.getElementById('algoritmo').value;
+  const tarefa = async () => {
+    try {
+      const r = await api(`/api/ranking?curso=${encodeURIComponent(curso)}&algoritmo=${alg}`);
+      const nome = document.querySelector(`#algoritmo option[value="${alg}"]`).textContent;
+      document.getElementById('metricas').innerHTML =
+        `<b class="text-slate-700">${num(r.total)}</b> alunos ordenados com <b class="text-slate-700">${nome}</b> em
+         <b class="text-slate-700">${String(r.tempo_ms).replace('.', ',')} ms</b> ·
+         ${num(r.metricas.comparacoes)} comparações · ${num(r.metricas.movimentacoes)} movimentações`;
+
+      document.getElementById('podio').innerHTML = r.top.slice(0, 3).map((a, i) => `
+        <a href="/?q=${a.matricula}" class="cartao fade-in flex flex-col items-center p-5 text-center transition hover:-translate-y-0.5 hover:shadow-md ${i === 0 ? 'ring-2 ring-amber-400' : ''}">
+          <div class="text-3xl">${medalhas[i]}</div>
+          <img src="${artwork(a)}" alt="" class="mt-2 h-28 w-28 object-contain drop-shadow">
+          <div class="mt-2 font-bold text-sigaa-900">${esc(a.nome)}</div>
+          <div class="text-xs text-slate-500">${esc(a.curso)}</div>
+          <div class="mt-2 text-2xl font-extrabold text-sigaa-700">${ira(a.ira)}</div>
+        </a>`).join('');
+
+      document.getElementById('lista').innerHTML = r.top.slice(3).map((a, i) => `
+        <li><a href="/?q=${a.matricula}" class="flex items-center gap-4 px-5 py-3 transition hover:bg-sigaa-50">
+          <span class="w-8 text-right font-bold text-slate-400">${i + 4}º</span>
+          ${avatar(a)}
+          <span class="min-w-0 flex-1">
+            <span class="block truncate font-semibold text-slate-800">${esc(a.nome)}</span>
+            <span class="block truncate text-xs text-slate-400">${a.matricula} · ${esc(a.curso)} · ${a.semestre}º sem.</span>
+          </span>
+          <span class="font-mono font-semibold text-sigaa-700">${ira(a.ira)}</span>
+        </a></li>`).join('');
+    } catch (err) { toast(err.message, 'erro'); }
+  };
+  return botao ? comCarregando(botao, tarefa) : tarefa();
+}
+
+document.getElementById('filtros').onsubmit = e => { e.preventDefault(); carregar(e.target.querySelector('button')); };
+carregar();
+</script>
+{% endblock %}

@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block titulo %}Aluno · SIGAA Pokémon{% endblock %}
+{% block conteudo %}
+<section class="cartao overflow-hidden">
+  <div class="bg-gradient-to-br from-white to-sigaa-50 p-6 sm:p-8">
+    <h1 class="text-2xl font-extrabold tracking-tight text-sigaa-900">Consultar aluno</h1>
+    <p class="mt-1 text-sm text-slate-500">Digite a matrícula (busca binária no kindex + sequencial no bloco) ou o CPF (tabela hash → kindex).</p>
+    <form id="form-busca" class="mt-5 flex flex-col gap-3 sm:flex-row">
+      <input id="termo" class="campo text-base" placeholder="Matrícula (ex: 231000123) ou CPF (000.000.000-00)" autocomplete="off" autofocus>
+      <button class="botao sm:w-40">Buscar</button>
+    </form>
+    <div class="mt-4 flex flex-wrap items-center gap-2 text-xs">
+      <span class="text-slate-400">Exemplos:</span>
+      <div id="exemplos" class="flex flex-wrap gap-2"></div>
+    </div>
+  </div>
+</section>
+
+<section id="resultado" class="mt-6"></section>
+
+<section class="mt-8 grid gap-6 lg:grid-cols-3">
+  <div class="cartao p-6 lg:col-span-2">
+    <h2 class="font-bold text-sigaa-900">Estrutura da base</h2>
+    <p class="mt-1 text-xs text-slate-500">Os blocos do kindex são montados com o <b>merge sort</b> da dupla (antes era o <code>sorted()</code> do Python).</p>
+    <dl id="info" class="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4"></dl>
+  </div>
+  <div class="cartao p-6">
+    <h2 class="font-bold text-sigaa-900">Gerar nova base</h2>
+    <p class="mt-1 text-xs text-slate-500">Sorteia alunos novos (com IRA e Pokémon) e um novo período de matrícula.</p>
+    <form id="form-gerar" class="mt-4 flex gap-2">
+      <select id="qtd" class="campo">
+        <option value="1000">1.000 alunos</option>
+        <option value="10000">10.000 alunos</option>
+        <option value="100000" selected>100.000 alunos</option>
+        <option value="500000">500.000 alunos</option>
+        <option value="1000000">1.000.000 alunos</option>
+      </select>
+      <button class="botao-sec shrink-0">Gerar</button>
+    </form>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const elResultado = document.getElementById('resultado');
+
+function etapa(rotulo, valor, desc) {
+  const vazio = valor === null || valor === undefined;
+  return `<div class="flex-1 rounded-xl ${vazio ? 'bg-slate-50 text-slate-300' : 'bg-sigaa-50 text-sigaa-800'} p-3 text-center">
+    <div class="text-2xl font-extrabold">${vazio ? '—' : valor}</div>
+    <div class="text-xs font-semibold">${rotulo}</div>
+    <div class="text-[11px] opacity-70">${desc}</div></div>`;
+}
+
+function seta() {
+  return '<div class="hidden items-center text-slate-300 sm:flex">→</div>';
+}
+
+function renderAluno(r) {
+  const a = r.aluno;
+  const c = r.comparacoes;
+  const total = (c.hash || 0) + c.binaria + c.sequencial;
+  const sol = r.solicitacoes.length
+    ? r.solicitacoes.map(s => `
+        <tr class="border-t border-slate-100">
+          <td class="py-2.5 pr-3"><a href="/turmas/${s.turma.codigo}" class="font-mono text-xs text-sigaa-600 hover:underline">${s.turma.codigo}</a></td>
+          <td class="py-2.5 pr-3">${esc(s.turma.disciplina)}</td>
+          <td class="py-2.5 pr-3 text-slate-500">${dataHora(s.timestamp)}</td>
+          <td class="py-2.5 pr-3 text-right font-semibold">${s.posicao}º <span class="font-normal text-slate-400">/ ${s.total}</span></td>
+          <td class="py-2.5 text-right">${s.deferido
+            ? '<span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">Deferido</span>'
+            : '<span class="rounded-full bg-poke-500/10 px-2.5 py-1 text-xs font-semibold text-poke-600">Indeferido</span>'}</td>
+        </tr>`).join('')
+    : '<tr><td colspan="5" class="py-4 text-center text-slate-400">Nenhuma solicitação de matrícula neste período.</td></tr>';
+
+  elResultado.innerHTML = `
+  <div class="fade-in grid gap-6 lg:grid-cols-3">
+    <div class="cartao overflow-hidden">
+      <div class="relative flex h-48 items-center justify-center bg-gradient-to-br from-poke-400 to-poke-600">
+        <div class="absolute inset-x-0 bottom-0 h-1/2 bg-white"></div>
+        <div class="absolute inset-x-0 top-1/2 h-2 -translate-y-1/2 bg-slate-800"></div>
+        <div class="relative flex h-40 w-40 items-center justify-center rounded-full bg-white ring-8 ring-slate-800">
+          <img src="${artwork(a)}" alt="" class="h-36 w-36 object-contain drop-shadow-lg">
+        </div>
+      </div>
+      <div class="p-6 text-center">
+        <div class="text-xs text-slate-400">Parceiro: <span id="nome-pokemon" class="font-semibold text-slate-600">#${a.pokemon_id}</span>${a.shiny ? ' <span class="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-700">✨ Shiny</span>' : ''}</div>
+        <h2 class="mt-1 text-xl font-extrabold text-sigaa-900">${esc(a.nome)}</h2>
+        <div class="mt-1 font-mono text-sm text-slate-500">${a.matricula}</div>
+        <div class="mt-3 flex flex-wrap justify-center gap-2 text-xs">
+          <span class="rounded-full bg-sigaa-50 px-2.5 py-1 font-semibold text-sigaa-700">${a.semestre}º semestre</span>
+          ${a.formando ? '<span class="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-700">🎓 Formando</span>' : ''}
+        </div>
+      </div>
+    </div>
+
+    <div class="flex flex-col gap-6 lg:col-span-2">
+      <div class="cartao p-6">
+        <div class="grid gap-6 sm:grid-cols-2">
+          <div>
+            <div class="rotulo">IRA</div>
+            <div class="mt-1 text-4xl font-extrabold text-sigaa-900">${ira(a.ira)}</div>
+            <div class="mt-2 h-2 rounded-full bg-slate-100"><div class="h-2 rounded-full ${corIra(a.ira)}" style="width:${a.ira / 5 * 100}%"></div></div>
+          </div>
+          <dl class="grid grid-cols-2 gap-3 text-sm">
+            <div><dt class="rotulo">Curso</dt><dd class="font-medium">${esc(a.curso)}</dd></div>
+            <div><dt class="rotulo">CPF</dt><dd class="font-mono text-xs">${a.cpf}</dd></div>
+            <div><dt class="rotulo">Idade</dt><dd class="font-medium">${a.idade} anos</dd></div>
+            <div><dt class="rotulo">Telefone</dt><dd class="font-medium">${esc(a.telefone)}</dd></div>
+          </dl>
+        </div>
+      </div>
+
+      <div class="cartao p-6">
+        <div class="flex items-baseline justify-between">
+          <h3 class="font-bold text-sigaa-900">Custo da busca por ${r.tipo === 'cpf' ? 'CPF' : 'matrícula'}</h3>
+          <span class="text-sm text-slate-500"><b class="text-sigaa-700">${total}</b> comparações · sequencial pura: ~${num(Math.round(window.TOTAL_ALUNOS / 2))}</span>
+        </div>
+        <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+          ${etapa('Hash', c.hash, 'CPF → matrícula')}${seta()}
+          ${etapa('Binária', c.binaria, 'no kindex')}${seta()}
+          ${etapa('Sequencial', c.sequencial, 'dentro do bloco')}
+        </div>
+      </div>
+    </div>
+
+    <div class="cartao p-6 lg:col-span-3">
+      <h3 class="font-bold text-sigaa-900">Solicitações de matrícula — 2026.2</h3>
+      <div class="mt-3 overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead><tr class="text-left"><th class="rotulo pb-2">Turma</th><th class="rotulo pb-2">Disciplina</th><th class="rotulo pb-2">Pedido em</th><th class="rotulo pb-2 text-right">Posição</th><th class="rotulo pb-2 text-right">Situação</th></tr></thead>
+          <tbody>${sol}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+  nomePokemon(a.pokemon_id).then(n => { const el = document.getElementById('nome-pokemon'); if (el) el.textContent = n; });
+}
+
+async function buscar(termo) {
+  document.getElementById('termo').value = termo;
+  try {
+    const r = await api(`/api/alunos/buscar?q=${encodeURIComponent(termo)}`);
+    renderAluno(r);
+    history.replaceState(null, '', `?q=${encodeURIComponent(termo)}`);
+  } catch (e) {
+    elResultado.innerHTML = `<div class="cartao fade-in p-6 text-center text-slate-500">${esc(e.message)}</div>`;
+  }
+}
+
+async function carregarExemplos() {
+  const ex = await api('/api/alunos/exemplos');
+  document.getElementById('exemplos').innerHTML = ex.map((a, i) => `
+    <button type="button" data-q="${i % 2 ? a.cpf : a.matricula}" class="ex inline-flex items-center gap-1.5 rounded-full bg-white py-1 pl-1 pr-3 ring-1 ring-slate-200 transition hover:ring-sigaa-500">
+      ${avatar(a, 'h-6 w-6')}<span class="font-mono">${i % 2 ? a.cpf : a.matricula}</span>
+    </button>`).join('');
+  document.querySelectorAll('.ex').forEach(b => b.onclick = () => buscar(b.dataset.q));
+}
+
+async function carregarInfo() {
+  const i = await api('/api/info');
+  window.TOTAL_ALUNOS = i.total;
+  const item = (rot, val) => `<div><dt class="rotulo">${rot}</dt><dd class="mt-0.5 text-lg font-bold text-sigaa-900">${val}</dd></div>`;
+  document.getElementById('info').innerHTML = [
+    item('Alunos', num(i.total)),
+    item('Blocos (kindex)', num(i.blocos)),
+    item('Bloco do disco', `${num(i.bloco_disco)} B`),
+    item('Registros/bloco', i.capacidade),
+    item('Comparações (merge)', num(i.ordenacao_blocos.comparacoes)),
+    item('Posições no hash', num(i.hash.tamanho)),
+    item('Fator de carga', String(i.hash.fator_carga).replace('.', ',')),
+    item('Maior lista (hash)', i.hash.maior_lista),
+  ].join('');
+}
+
+document.getElementById('form-busca').onsubmit = e => {
+  e.preventDefault();
+  const termo = document.getElementById('termo').value.trim();
+  if (termo) buscar(termo);
+};
+
+document.getElementById('form-gerar').onsubmit = e => {
+  e.preventDefault();
+  const botao = e.target.querySelector('button');
+  const qtd = Number(document.getElementById('qtd').value);
+  comCarregando(botao, async () => {
+    try {
+      const i = await api('/api/base/gerar', { method: 'POST', body: { qtd } });
+      toast(`Base com ${num(i.total)} alunos gerada em ${String(i.carregado_em).replace('.', ',')}s`);
+      elResultado.innerHTML = '';
+      await Promise.all([carregarInfo(), carregarExemplos()]);
+    } catch (err) { toast(err.message, 'erro'); }
+  });
+};
+
+carregarExemplos();
+const q = new URLSearchParams(location.search).get('q');
+carregarInfo().then(() => { if (q) buscar(q); });
+</script>
+{% endblock %}

@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block titulo %}{{ turma.codigo }} · SIGAA Pokémon{% endblock %}
+{% block conteudo %}
+<a href="/turmas" class="text-sm text-sigaa-600 hover:underline">← Turmas</a>
+
+<div class="mt-3 grid gap-6 lg:grid-cols-3">
+  <section class="cartao p-6 lg:col-span-2">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="rounded-md bg-sigaa-50 px-2 py-0.5 font-mono text-xs font-medium text-sigaa-700">{{ turma.codigo }}</span>
+      <span class="font-mono text-xs text-slate-400">{{ turma.horario }}</span>
+    </div>
+    <h1 class="mt-2 text-2xl font-extrabold tracking-tight text-sigaa-900">{{ turma.disciplina }}</h1>
+    <div class="text-sm text-slate-500">{{ turma.professor }} · <b>{{ turma.vagas }}</b> vagas</div>
+
+    <div class="mt-6">
+      <div class="rotulo">Algoritmo usado no processamento</div>
+      <div class="mt-2 flex flex-wrap gap-4">
+        {% for grupo, estavel in [('Estáveis', True), ('Instáveis', False)] %}
+        <div>
+          <div class="mb-1 text-[11px] font-medium {{ 'text-emerald-600' if estavel else 'text-poke-500' }}">{{ grupo }}</div>
+          <div class="inline-flex rounded-xl bg-slate-100 p-1">
+            {% for id, alg in algoritmos.items() if alg.estavel == estavel %}
+            <button data-alg="{{ id }}" class="alg rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-500 transition">{{ alg.nome }}</button>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="mt-6">
+      <div class="rotulo">Passadas (da regra menos importante para a mais importante)</div>
+      <ol id="passadas" class="mt-2 grid gap-2 sm:grid-cols-4"></ol>
+    </div>
+  </section>
+
+  <aside class="flex flex-col gap-6">
+    <section class="cartao p-6">
+      <h2 class="font-bold text-sigaa-900">Solicitar vaga</h2>
+      <p class="mt-1 text-xs text-slate-500">O pedido entra com a hora de agora — depois de todos os outros.</p>
+      <form id="form-pedido" class="mt-3 flex gap-2">
+        <input id="matricula" class="campo font-mono" placeholder="Matrícula" inputmode="numeric" required>
+        <button class="botao shrink-0">Pedir</button>
+      </form>
+    </section>
+    <section class="cartao p-6">
+      <h2 class="font-bold text-sigaa-900">Por que várias passadas?</h2>
+      <p class="mt-2 text-sm text-slate-600">
+        Cada passada ordena por um critério só. Para a ordem da passada anterior sobreviver aos empates,
+        o algoritmo precisa ser <b class="text-emerald-600">estável</b>. Escolha o <b>Quick</b> ou o <b>Heap</b>
+        e veja alunos com a mesma prioridade trocando de lugar — alguns ganham ou perdem a vaga.
+      </p>
+    </section>
+  </aside>
+</div>
+
+<section id="resumo" class="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6"></section>
+<div id="alerta" class="mt-4"></div>
+
+<section class="cartao mt-4 overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-left">
+        <tr>
+          <th class="rotulo px-4 py-3">#</th>
+          <th class="rotulo px-4 py-3">Aluno</th>
+          <th class="rotulo px-4 py-3 text-center">Formando</th>
+          <th class="rotulo px-4 py-3 text-right">IRA</th>
+          <th class="rotulo px-4 py-3 text-right">Semestre</th>
+          <th class="rotulo px-4 py-3">Pedido em</th>
+          <th class="rotulo px-4 py-3 text-right">Situação</th>
+        </tr>
+      </thead>
+      <tbody id="linhas"></tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CODIGO = {{ turma.codigo|tojson }};
+let algoritmo = 'merge';
+let destaque = null;
+
+function cartaoNum(rotulo, valor, extra = '', cor = 'text-sigaa-900') {
+  return `<div class="cartao p-4"><div class="rotulo">${rotulo}</div><div class="mt-1 text-2xl font-extrabold ${cor}">${valor}</div><div class="text-xs text-slate-400">${extra}</div></div>`;
+}
+
+function situacao(l, estavel) {
+  if (!estavel && l.deferido && !l.deveria_deferir)
+    return '<span class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">Deferido indevidamente</span>';
+  if (!estavel && !l.deferido && l.deveria_deferir)
+    return '<span class="rounded-full bg-poke-500 px-2.5 py-1 text-xs font-semibold text-white">Perdeu a vaga</span>';
+  return l.deferido
+    ? '<span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">Deferido</span>'
+    : '<span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">Indeferido</span>';
+}
+
+function linha(l, r) {
+  const errado = l.posicao !== l.posicao_correta;
+  const fundo = l.pedido_id === destaque ? 'bg-sigaa-50 ring-2 ring-inset ring-sigaa-500'
+    : errado ? 'bg-amber-50/70' : '';
+  const delta = errado
+    ? `<div class="text-[11px] font-semibold text-amber-600">certo: ${l.posicao_correta}º</div>` : '';
+  return `
+  <tr id="p${l.pedido_id}" class="border-t border-slate-100 ${fundo}">
+    <td class="px-4 py-2 font-bold text-slate-700">${l.posicao}${delta}</td>
+    <td class="px-4 py-2">
+      <a href="/?q=${l.matricula}" class="flex items-center gap-3 hover:underline">
+        ${avatar(l)}
+        <span><span class="block font-semibold text-slate-800">${esc(l.nome)}</span><span class="font-mono text-xs text-slate-400">${l.matricula}</span></span>
+      </a>
+    </td>
+    <td class="px-4 py-2 text-center">${l.formando ? '🎓' : '<span class="text-slate-300">—</span>'}</td>
+    <td class="px-4 py-2 text-right font-mono">${ira(l.ira)}</td>
+    <td class="px-4 py-2 text-right">${l.semestre}º</td>
+    <td class="px-4 py-2 font-mono text-xs text-slate-500">${dataHora(l.timestamp)}</td>
+    <td class="px-4 py-2 text-right">${situacao(l, r.estavel)}</td>
+  </tr>`;
+}
+
+function render(r) {
+  document.querySelectorAll('.alg').forEach(b => {
+    const ativo = b.dataset.alg === algoritmo;
+    b.classList.toggle('bg-white', ativo);
+    b.classList.toggle('shadow', ativo);
+    b.classList.toggle('text-sigaa-800', ativo);
+    b.classList.toggle('text-slate-500', !ativo);
+  });
+
+  document.getElementById('passadas').innerHTML = r.passadas.map((p, i) => `
+    <li class="rounded-xl bg-slate-50 p-3">
+      <div class="text-[11px] font-semibold text-slate-400">${i + 1}ª passada</div>
+      <div class="font-semibold text-sigaa-900">${p.criterio}</div>
+      <div class="mt-1 text-xs text-slate-500">${num(p.comparacoes)} comp. · ${num(p.movimentacoes)} mov.</div>
+    </li>`).join('');
+
+  const ruim = r.injusticas > 0;
+  document.getElementById('resumo').innerHTML = [
+    cartaoNum('Pedidos', r.total_pedidos),
+    cartaoNum('Deferidos', r.deferidos, `de ${r.turma.vagas} vagas`),
+    cartaoNum('Comparações', num(r.metricas.comparacoes), r.algoritmo_nome),
+    cartaoNum('Movimentações', num(r.metricas.movimentacoes)),
+    cartaoNum('Fora do lugar', r.divergentes, 'vs. merge sort', r.divergentes ? 'text-amber-600' : 'text-emerald-600'),
+    cartaoNum('Vagas injustas', r.injusticas, 'ganhou/perdeu vaga', ruim ? 'text-poke-500' : 'text-emerald-600'),
+  ].join('');
+
+  document.getElementById('alerta').innerHTML = r.estavel
+    ? `<div class="fade-in rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800 ring-1 ring-emerald-200">✓ <b>${r.algoritmo_nome}</b> é estável: os empates de cada passada preservam a ordem da anterior e o resultado respeita todos os critérios. (${String(r.tempo_ms).replace('.', ',')} ms)</div>`
+    : `<div class="fade-in rounded-xl bg-poke-500/10 px-4 py-3 text-sm text-poke-600 ring-1 ring-poke-500/30">✗ <b>${r.algoritmo_nome}</b> não é estável: ${r.divergentes} alunos ficaram fora da posição correta e <b>${r.injusticas}</b> tiveram a vaga decidida errado. As linhas em amarelo mostram a posição certa.</div>`;
+
+  const linhas = [];
+  r.resultado.forEach((l, i) => {
+    if (i === r.turma.vagas) {
+      linhas.push(`<tr><td colspan="7" class="bg-poke-500 px-4 py-1.5 text-center text-xs font-bold uppercase tracking-widest text-white">Linha de corte · ${r.turma.vagas} vagas</td></tr>`);
+    }
+    linhas.push(linha(l, r));
+  });
+  document.getElementById('linhas').innerHTML = linhas.join('');
+}
+
+async function processar() {
+  const r = await api(`/api/turmas/${CODIGO}/processar?algoritmo=${algoritmo}`);
+  render(r);
+  if (destaque) document.getElementById(`p${destaque}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+document.querySelectorAll('.alg').forEach(b => b.onclick = () => { algoritmo = b.dataset.alg; processar(); });
+
+document.getElementById('form-pedido').onsubmit = e => {
+  e.preventDefault();
+  const botao = e.target.querySelector('button');
+  comCarregando(botao, async () => {
+    try {
+      const r = await api('/api/pedidos', { method: 'POST', body: { matricula: document.getElementById('matricula').value, turma: CODIGO } });
+      destaque = r.pedido.id;
+      toast(`Pedido de ${r.aluno.nome} registrado`);
+      document.getElementById('matricula').value = '';
+      await processar();
+    } catch (err) { toast(err.message, 'erro'); }
+  });
+};
+
+processar();
+</script>
+{% endblock %}

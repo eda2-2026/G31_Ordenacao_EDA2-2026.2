@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block titulo %}Benchmark · SIGAA Pokémon{% endblock %}
+{% block conteudo %}
+<h1 class="text-2xl font-extrabold tracking-tight text-sigaa-900">Benchmark dos algoritmos</h1>
+<p class="mt-1 max-w-2xl text-sm text-slate-500">
+  Sorteia uma amostra de alunos da base e ordena com cada algoritmo, contando comparações e movimentações.
+  O insertion sort (O(n²)) só roda até {{ '{:,}'.format(limite_quadratico).replace(',', '.') }} elementos.
+</p>
+
+<form id="form" class="cartao mt-6 grid gap-4 p-5 sm:grid-cols-4 sm:items-end">
+  <label class="block"><span class="rotulo">Tamanho (n)</span>
+    <select id="n" class="campo mt-1">
+      <option value="1000">1.000</option>
+      <option value="5000">5.000</option>
+      <option value="10000" selected>10.000</option>
+      <option value="50000">50.000</option>
+      <option value="100000">100.000</option>
+    </select>
+  </label>
+  <label class="block"><span class="rotulo">Chave</span>
+    <select id="chave" class="campo mt-1">
+      <option value="matricula">Matrícula</option>
+      <option value="cpf">CPF</option>
+      <option value="ira">IRA</option>
+    </select>
+  </label>
+  <label class="block"><span class="rotulo">Ordem inicial</span>
+    <select id="ordem" class="campo mt-1">
+      <option value="aleatoria">Aleatória</option>
+      <option value="crescente">Já ordenada</option>
+      <option value="decrescente">Invertida</option>
+    </select>
+  </label>
+  <button class="botao">▶ Rodar todos</button>
+</form>
+
+<div id="graficos" class="mt-6 grid gap-6 lg:grid-cols-3"></div>
+
+<section class="cartao mt-6 overflow-hidden">
+  <div class="flex items-center justify-between px-5 py-4">
+    <h2 class="font-bold text-sigaa-900">Histórico de execuções</h2>
+    <button id="limpar" class="text-xs text-slate-400 hover:text-poke-500">limpar</button>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-left"><tr>
+        <th class="rotulo px-5 py-2.5">Algoritmo</th><th class="rotulo px-5 py-2.5 text-right">n</th>
+        <th class="rotulo px-5 py-2.5">Chave</th><th class="rotulo px-5 py-2.5">Ordem</th>
+        <th class="rotulo px-5 py-2.5 text-right">Tempo</th><th class="rotulo px-5 py-2.5 text-right">Comparações</th>
+        <th class="rotulo px-5 py-2.5 text-right">Movimentações</th><th class="rotulo px-5 py-2.5 text-center">OK</th>
+      </tr></thead>
+      <tbody id="historico"><tr><td colspan="8" class="px-5 py-6 text-center text-slate-400">Rode o benchmark para ver os resultados.</td></tr></tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ALGORITMOS = {{ algoritmos.keys()|list|tojson }};
+const LIMITE = {{ limite_quadratico }};
+const CORES = { merge: 'bg-sigaa-500', quick: 'bg-poke-500', heap: 'bg-amber-500', radix: 'bg-emerald-500', insertion: 'bg-violet-500' };
+const historico = [];
+
+function grafico(titulo, resultados, campo, formato) {
+  const maior = Math.max(...resultados.map(r => r[campo]), 1);
+  return `
+  <div class="cartao fade-in p-5">
+    <h3 class="font-bold text-sigaa-900">${titulo}</h3>
+    <div class="mt-4 space-y-3">
+      ${resultados.map(r => `
+        <div>
+          <div class="flex justify-between text-xs"><span class="font-semibold text-slate-700">${r.nome}</span><span class="font-mono text-slate-500">${formato(r[campo])}</span></div>
+          <div class="mt-1 h-3 overflow-hidden rounded-full bg-slate-100">
+            <div class="h-3 rounded-full ${CORES[r.algoritmo]} transition-all duration-700" style="width:0" data-w="${Math.max(1, r[campo] / maior * 100)}%"></div>
+          </div>
+        </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function desenhar(resultados) {
+  document.getElementById('graficos').innerHTML =
+    grafico('Tempo', resultados, 'tempo_ms', v => `${num(v)} ms`) +
+    grafico('Comparações', resultados, 'comparacoes', num) +
+    grafico('Movimentações', resultados, 'movimentacoes', num);
+  requestAnimationFrame(() => document.querySelectorAll('[data-w]').forEach(b => b.style.width = b.dataset.w));
+
+  document.getElementById('historico').innerHTML = historico.map(r => `
+    <tr class="border-t border-slate-100">
+      <td class="px-5 py-2.5 font-semibold"><span class="mr-2 inline-block h-2.5 w-2.5 rounded-full ${CORES[r.algoritmo]}"></span>${r.nome}</td>
+      <td class="px-5 py-2.5 text-right font-mono">${num(r.n)}</td>
+      <td class="px-5 py-2.5">${r.chave}</td><td class="px-5 py-2.5">${r.ordem}</td>
+      <td class="px-5 py-2.5 text-right font-mono">${num(r.tempo_ms)} ms</td>
+      <td class="px-5 py-2.5 text-right font-mono">${num(r.comparacoes)}</td>
+      <td class="px-5 py-2.5 text-right font-mono">${num(r.movimentacoes)}</td>
+      <td class="px-5 py-2.5 text-center">${r.correto ? '✓' : '✗'}</td>
+    </tr>`).join('');
+}
+
+document.getElementById('form').onsubmit = e => {
+  e.preventDefault();
+  const n = Number(document.getElementById('n').value);
+  const chave = document.getElementById('chave').value;
+  const ordem = document.getElementById('ordem').value;
+  comCarregando(e.target.querySelector('button'), async () => {
+    const resultados = [];
+    for (const alg of ALGORITMOS) {
+      if (alg === 'insertion' && n > LIMITE) continue;
+      try {
+        const r = await api(`/api/benchmark?algoritmo=${alg}&n=${n}&chave=${chave}&ordem=${ordem}`);
+        resultados.push(r);
+        historico.unshift(r);
+        desenhar(resultados);
+      } catch (err) { toast(err.message, 'erro'); }
+    }
+    if (n > LIMITE) toast(`Insertion sort pulado: n > ${num(LIMITE)}`);
+  });
+};
+
+document.getElementById('limpar').onclick = () => {
+  historico.length = 0;
+  document.getElementById('historico').innerHTML = '';
+};
+</script>
+{% endblock %}
