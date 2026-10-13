@@ -42,6 +42,20 @@ Todos foram implementados pela dupla, recebem uma função de chave e a direçã
 - **Kindex do Trabalho 1**: os blocos da busca indexada eram montados com o `sorted()` do Python; agora usam o nosso merge sort.
 - **Ranking de IRA**: a base inteira (ou um curso) ordenada por IRA, com o algoritmo à escolha.
 - **Benchmark**: amostras de 1.000 a 100.000 alunos, ordenadas por matrícula, CPF ou IRA, partindo de ordem aleatória, já ordenada ou invertida.
+- **Corrida de algoritmos**: os mesmos 8 a 40 alunos ordenados pelos 5 algoritmos ao mesmo tempo, animados passo a passo (detalhes abaixo).
+
+### Corrida de algoritmos
+
+Quando a tela de corrida pede uma ordenação, o `Metricas` liga a gravação de passos e cada algoritmo anota o que fez: comparou A com B, trocou A e B, escreveu A na posição k (no vetor principal ou no auxiliar), fim de passada. O navegador só reproduz esses passos — a animação é exatamente o que as funções de `ordenacao.py` fizeram, e cada comparação ou movimentação gasta um "tique" da corrida, então quem chega primeiro é quem fez menos trabalho.
+
+O que dá pra ver na tela:
+
+- **Memória extra**: merge e radix escrevem num vetor auxiliar (a linha tracejada) e, no fim de cada passada, ele vira o principal. Quick, heap e insertion trabalham no próprio vetor.
+- **Como cada um pensa**: o pivô do quick, as trocas de longa distância do heap, o insertion segurando um aluno "na mão" enquanto os maiores deslizam, o radix sem nenhuma comparação.
+- **Estabilidade**: cada barra mostra a ordem de chegada (`#3`). Ao terminar, a pista confere os empates — ordenando por semestre, merge, radix e insertion mantêm os empatados na ordem de chegada, enquanto quick e heap trocam alguns de lugar (marcados em vermelho).
+- **Entrada importa**: com a ordem inicial "Já ordenada", o insertion sort cai para O(n) e passa os outros.
+
+Fora da corrida a gravação fica desligada (`passos = None`) e não muda o tempo do benchmark.
 
 A busca do Trabalho 1 continua funcionando na tela **Aluno** (matrícula → kindex; CPF → hash → kindex), agora mostrando também a situação do aluno em cada turma que ele pediu.
 
@@ -92,7 +106,7 @@ Na primeira execução o sistema gera uma base de 100.000 alunos, 16 turmas e um
 
 | Arquivo | O que faz |
 |---|---|
-| `ordenacao.py` | Os 5 algoritmos de ordenação, com contagem de comparações e movimentações |
+| `ordenacao.py` | Os 5 algoritmos de ordenação, com contagem de comparações e movimentações (e gravação de passos para a corrida) |
 | `matricula.py` | Regras de prioridade e processamento da matrícula em passadas estáveis |
 | `busca.py` | Kindex + tabela hash do Trabalho 1 (blocos montados com merge sort) |
 | `dados.py` | Geração e persistência em CSV de alunos, turmas e pedidos |

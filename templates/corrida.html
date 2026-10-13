@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+{% block titulo %}Corrida · SIGAA Pokémon{% endblock %}
+{% block conteudo %}
+<style>
+  .palco { position: relative; }
+  .ficha { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+           padding: 0 2px; transition: left var(--dur) ease, top var(--dur) ease, transform var(--dur) ease; }
+  .ficha img { width: min(30px, 92%); aspect-ratio: 1; object-fit: contain; transition: transform .15s; }
+  .ficha .barra { width: 100%; border-radius: 6px 6px 2px 2px; display: flex; align-items: flex-start; justify-content: center;
+                  font: 600 10px/1 'JetBrains Mono', monospace; color: white; padding-top: 3px; overflow: hidden;
+                  outline: 0 solid transparent; outline-offset: 1px; transition: outline-color .1s; }
+  .ficha .chegada { font: 500 9px/1.4 'JetBrains Mono', monospace; color: #94a3b8; }
+  .ficha.comparando .barra { outline: 3px solid #f59e0b; }
+  .ficha.comparando img { transform: translateY(-4px) scale(1.15); }
+  .ficha.escrevendo .barra { outline: 3px solid #10b981; }
+  .ficha.pivo .barra { outline: 3px dashed #e3350d; }
+  .ficha.levantado .barra { box-shadow: 0 8px 16px -4px rgb(15 23 42 / .35); }
+  .ficha.errado .barra { outline: 3px solid #e3350d; }
+  .ficha.errado .chegada { color: #e3350d; font-weight: 700; }
+  .ficha.certo .chegada { color: #059669; }
+  .auxiliar { position: absolute; left: 0; right: 0; border: 2px dashed #cbd5e1; border-radius: 12px; }
+</style>
+
+<div class="flex flex-col gap-1">
+  <h1 class="text-2xl font-extrabold tracking-tight text-sigaa-900">Corrida de algoritmos</h1>
+  <p class="max-w-3xl text-sm text-slate-500">
+    Os mesmos alunos ordenados pelos 5 algoritmos ao mesmo tempo. Cada comparação ou movimentação gasta um passo —
+    os passos vêm das nossas funções em Python, gravados enquanto elas ordenam. O número embaixo de cada barra é a
+    <b>ordem de chegada</b>: num algoritmo estável, quem empatou continua nessa ordem no final.
+  </p>
+</div>
+
+<form id="form" class="cartao mt-6 grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-6 lg:items-end">
+  <label class="block"><span class="rotulo">Alunos</span>
+    <select id="n" class="campo mt-1">
+      {% for v in [8, 12, 16, 24, 32, limite] %}<option value="{{ v }}" {{ 'selected' if v == 16 }}>{{ v }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="block"><span class="rotulo">Ordenar por</span>
+    <select id="chave" class="campo mt-1">
+      <option value="semestre">Semestre (muito empate)</option>
+      <option value="ira">IRA com 1 casa</option>
+      <option value="matricula">Matrícula (sem empate)</option>
+    </select>
+  </label>
+  <label class="block"><span class="rotulo">Ordem inicial</span>
+    <select id="ordem" class="campo mt-1">
+      <option value="aleatoria">Aleatória</option>
+      <option value="crescente">Já ordenada</option>
+      <option value="decrescente">Invertida</option>
+    </select>
+  </label>
+  <label class="block"><span class="rotulo">Velocidade: <span id="vel-txt"></span></span>
+    <input id="vel" type="range" min="1" max="60" value="10" class="mt-3 w-full accent-sigaa-600">
+  </label>
+  <div class="flex gap-2 lg:col-span-2">
+    <button type="button" id="largar" class="botao flex-1">▶ Largar</button>
+    <button type="button" id="passo" class="botao-sec" title="Um passo">⏭</button>
+    <button type="button" id="final" class="botao-sec" title="Pular para o final">⏩</button>
+    <button type="submit" class="botao-sec" title="Sortear outros alunos">↻</button>
+  </div>
+</form>
+
+<div class="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500">
+  <span><span class="mr-1 inline-block h-2.5 w-2.5 rounded-sm ring-2 ring-amber-500"></span>comparando</span>
+  <span><span class="mr-1 inline-block h-2.5 w-2.5 rounded-sm ring-2 ring-emerald-500"></span>movendo</span>
+  <span><span class="mr-1 inline-block h-2.5 w-2.5 rounded-sm outline-dashed outline-2 outline-poke-500"></span>pivô (quick)</span>
+  <span><span class="mr-1 inline-block h-2.5 w-4 rounded-sm border-2 border-dashed border-slate-300"></span>vetor auxiliar (memória extra)</span>
+  <span><b class="font-mono text-slate-400">#3</b> ordem de chegada</span>
+</div>
+
+<div id="pistas" class="mt-4 space-y-4"></div>
+<section id="podio" class="cartao mt-6 hidden p-5"></section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CORES = { merge: 'bg-sigaa-500', quick: 'bg-poke-500', heap: 'bg-amber-500', radix: 'bg-emerald-500', insertion: 'bg-violet-500' };
+const MEDALHAS = ['🥇', '🥈', '🥉'];
+const ALTURA = 118;   // altura de cada linha do palco (vetor principal, auxiliar ou "na mão")
+const CUSTO = { c: 1, t: 1, m: 1 };  // passos que gastam tempo; "v", "l" e "p" são instantâneos
+
+let corrida = null;
+let timer = null;
+
+function cor(t) { return `hsl(${215 - t * 205} 70% 52%)`; }
+
+// linhas do palco, de cima pra baixo: "na mão" (só insertion), principal, auxiliar (merge e radix)
+// vetor: -1 = na mão, 0 = principal, 1 = auxiliar
+function topo(p, vetor) { return (vetor + (p.segura ? 1 : 0)) * (ALTURA + 14); }
+function linhas(p) { return 1 + (p.segura ? 1 : 0) + (p.memoria_extra ? 1 : 0); }
+
+async function sortear() {
+  pausar();
+  const n = document.getElementById('n').value;
+  const chave = document.getElementById('chave').value;
+  const ordem = document.getElementById('ordem').value;
+  try {
+    const r = await api(`/api/corrida?n=${n}&chave=${chave}&ordem=${ordem}`);
+    montar(r);
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function montar(r) {
+  const valores = r.alunos.map(a => a.valor);
+  const menor = Math.min(...valores), maior = Math.max(...valores);
+  const n = r.alunos.length;
+  const ranking = [...new Set(r.pistas.map(p => p.comparacoes + p.movimentacoes))].sort((a, b) => a - b);
+
+  corrida = {
+    alunos: r.alunos.map((a, i) => ({ ...a, chegada: i + 1, t: maior === menor ? 1 : (a.valor - menor) / (maior - menor) })),
+    pistas: r.pistas.map(p => ({
+      ...p, idx: 0, comp: 0, mov: 0, feito: false,
+      segura: p.passos.some(passo => passo[0] === 'l'),
+      custo: p.comparacoes + p.movimentacoes,
+      lugar: ranking.indexOf(p.comparacoes + p.movimentacoes) + 1,
+      fichas: r.alunos.map((_, i) => ({ pos: i, vetor: 0 })),
+    })),
+  };
+  document.getElementById('podio').classList.add('hidden');
+  document.getElementById('pistas').innerHTML = corrida.pistas.map(p => `
+    <div class="cartao fade-in p-4" id="pista-${p.algoritmo}">
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span class="h-3 w-3 rounded-full ${CORES[p.algoritmo]}"></span>
+        <h2 class="font-bold text-sigaa-900">${p.nome}</h2>
+        <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold ${p.estavel ? 'bg-emerald-50 text-emerald-700' : 'bg-orange-50 text-orange-700'}">${p.estavel ? 'estável' : 'instável'}</span>
+        <span class="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-600">${p.complexidade}</span>
+        <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">${p.memoria_extra ? 'usa vetor auxiliar' : 'no próprio vetor'}</span>
+        <span class="ml-auto font-mono text-xs text-slate-500">
+          <span data-comp>0</span> comp. · <span data-mov>0</span> mov.
+        </span>
+        <span data-lugar class="w-8 text-right text-xl"></span>
+      </div>
+      <div class="mt-2 h-1 overflow-hidden rounded-full bg-slate-100"><div data-prog class="h-1 rounded-full ${CORES[p.algoritmo]}" style="width:0"></div></div>
+      <div class="palco mt-3" style="height:${linhas(p) * (ALTURA + 14) - 14}px">
+        ${p.memoria_extra ? `<div class="auxiliar" style="top:${topo(p, 1) - 4}px;height:${ALTURA + 8}px"></div>` : ''}
+        ${p.segura ? `<div class="absolute left-0 top-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">na mão ↓</div>` : ''}
+        ${corrida.alunos.map((a, i) => `
+          <div class="ficha" data-i="${i}" title="${esc(a.nome)} · ${a.matricula}" style="width:${100 / n}%;height:${ALTURA}px;left:${i * 100 / n}%;top:${topo(p, 0)}px">
+            <img src="${artwork(a)}" alt="">
+            <div class="barra" style="height:${18 + a.t * 62}px;background:${cor(a.t)}">${esc(a.rotulo)}</div>
+            <div class="chegada">#${a.chegada}</div>
+          </div>`).join('')}
+      </div>
+      <p data-veredito class="mt-1 min-h-[1.25rem] text-sm"></p>
+    </div>`).join('');
+  atualizarBotao();
+}
+
+function ficha(p, i) { return document.querySelector(`#pista-${p.algoritmo} .ficha[data-i="${i}"]`); }
+
+function posicionar(p, i) {
+  const f = p.fichas[i];
+  const el = ficha(p, i);
+  el.style.left = `${f.pos * 100 / corrida.alunos.length}%`;
+  el.style.top = `${topo(p, f.vetor)}px`;
+}
+
+function aplicar(p, passo) {
+  const [tipo, a, b, vetor] = passo;
+  if (tipo === 'c') {
+    p.comp++;
+    ficha(p, a).classList.add('comparando');
+    ficha(p, b).classList.add('comparando');
+  } else if (tipo === 't') {
+    p.mov++;
+    [p.fichas[a].pos, p.fichas[b].pos] = [p.fichas[b].pos, p.fichas[a].pos];
+    posicionar(p, a); posicionar(p, b);
+    ficha(p, a).classList.add('escrevendo');
+    ficha(p, b).classList.add('escrevendo');
+  } else if (tipo === 'm') {
+    p.mov++;
+    p.fichas[a] = { pos: b, vetor };
+    posicionar(p, a);
+    const el = ficha(p, a);
+    el.classList.remove('levantado');
+    el.classList.add('escrevendo');
+  } else if (tipo === 'v') {
+    p.fichas.forEach((f, i) => { if (f.vetor === 1) { f.vetor = 0; posicionar(p, i); } });
+  } else if (tipo === 'l') {
+    p.fichas[a].vetor = -1;
+    posicionar(p, a);
+    ficha(p, a).classList.add('levantado');
+  } else if (tipo === 'p') {
+    document.querySelectorAll(`#pista-${p.algoritmo} .pivo`).forEach(el => el.classList.remove('pivo'));
+    ficha(p, a).classList.add('pivo');
+  }
+}
+
+// avança a pista até gastar um passo (os instantâneos vão junto)
+function avancar(p) {
+  if (p.feito) return;
+  document.querySelectorAll(`#pista-${p.algoritmo} .comparando, #pista-${p.algoritmo} .escrevendo`)
+    .forEach(el => el.classList.remove('comparando', 'escrevendo'));
+  while (p.idx < p.passos.length) {
+    const passo = p.passos[p.idx++];
+    aplicar(p, passo);
+    if (CUSTO[passo[0]]) break;
+  }
+  const pista = document.getElementById(`pista-${p.algoritmo}`);
+  pista.querySelector('[data-comp]').textContent = num(p.comp);
+  pista.querySelector('[data-mov]').textContent = num(p.mov);
+  pista.querySelector('[data-prog]').style.width = `${(p.comp + p.mov) / Math.max(p.custo, 1) * 100}%`;
+  if (p.idx >= p.passos.length) terminar(p);
+}
+
+// confere a estabilidade: entre vizinhos empatados, a ordem de chegada tem que crescer
+function terminar(p) {
+  p.feito = true;
+  const pista = document.getElementById(`pista-${p.algoritmo}`);
+  pista.querySelectorAll('.pivo, .comparando, .escrevendo').forEach(el => el.classList.remove('pivo', 'comparando', 'escrevendo'));
+  const ordem = p.fichas.map((f, i) => ({ ...f, i })).sort((x, y) => x.pos - y.pos).map(f => f.i);
+  const errados = new Set();
+  let empates = 0;
+  for (let k = 0; k + 1 < ordem.length; k++) {
+    const a = corrida.alunos[ordem[k]], b = corrida.alunos[ordem[k + 1]];
+    if (a.valor !== b.valor) continue;
+    empates++;
+    if (a.chegada > b.chegada) { errados.add(ordem[k]); errados.add(ordem[k + 1]); }
+  }
+  ordem.forEach(i => ficha(p, i).classList.add(errados.has(i) ? 'errado' : 'certo'));
+  p.trocados = errados.size;
+  p.empates = empates;
+
+  pista.querySelector('[data-lugar]').textContent = MEDALHAS[p.lugar - 1] || `${p.lugar}º`;
+  pista.querySelector('[data-veredito]').innerHTML =
+    `<b class="text-slate-700">${num(p.custo)} passos.</b> ` + (
+      !empates ? '<span class="text-slate-500">Sem empates nessa chave — aqui estabilidade não faz diferença.</span>'
+      : errados.size ? `<span class="font-semibold text-poke-600">✗ ${errados.size} alunos empatados saíram da ordem de chegada.</span>`
+      : '<span class="font-semibold text-emerald-600">✓ Todos os empates mantiveram a ordem de chegada.</span>');
+
+  if (corrida.pistas.every(x => x.feito)) { pausar(); mostrarPodio(); }
+}
+
+function mostrarPodio() {
+  const ordem = [...corrida.pistas].sort((a, b) => a.custo - b.custo);
+  const el = document.getElementById('podio');
+  el.classList.remove('hidden');
+  el.innerHTML = `
+    <h2 class="font-bold text-sigaa-900">Resultado</h2>
+    <ol class="mt-3 divide-y divide-slate-100">
+      ${ordem.map(p => `
+        <li class="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5 text-sm">
+          <span class="w-8 text-xl">${MEDALHAS[p.lugar - 1] || p.lugar + 'º'}</span>
+          <span class="w-36 font-semibold"><span class="mr-2 inline-block h-2.5 w-2.5 rounded-full ${CORES[p.algoritmo]}"></span>${p.nome}</span>
+          <span class="w-28 text-right font-mono">${num(p.custo)} passos</span>
+          <span class="font-mono text-xs text-slate-500">${num(p.comparacoes)} comp. + ${num(p.movimentacoes)} mov.</span>
+          <span class="ml-auto text-xs ${!p.empates ? 'text-slate-400' : p.trocados ? 'font-semibold text-poke-600' : 'font-semibold text-emerald-600'}">
+            ${!p.empates ? 'sem empates' : p.trocados ? `✗ ${p.trocados} fora da ordem de chegada` : '✓ empates preservados'}</span>
+        </li>`).join('')}
+    </ol>`;
+}
+
+function rodando() { return timer !== null; }
+
+function tique() {
+  corrida.pistas.forEach(avancar);
+  if (rodando()) timer = setTimeout(tique, 1000 / velocidade());
+}
+
+function velocidade() { return Number(document.getElementById('vel').value); }
+
+function ajustarVelocidade() {
+  const v = velocidade();
+  document.getElementById('vel-txt').textContent = `${v} passo${v > 1 ? 's' : ''}/s`;
+  document.documentElement.style.setProperty('--dur', `${Math.min(280, 850 / v)}ms`);
+}
+
+function pausar() { clearTimeout(timer); timer = null; atualizarBotao(); }
+
+function atualizarBotao() {
+  const acabou = corrida && corrida.pistas.every(p => p.feito);
+  document.getElementById('largar').innerHTML = rodando() ? '⏸ Pausar' : acabou ? '↺ De novo' : '▶ Largar';
+}
+
+document.getElementById('largar').onclick = () => {
+  if (!corrida) return;
+  if (rodando()) return pausar();
+  if (corrida.pistas.every(p => p.feito)) {
+    // mesma largada, do começo
+    const r = { alunos: corrida.alunos, pistas: corrida.pistas.map(({ idx, comp, mov, feito, segura, fichas, custo, lugar, trocados, empates, ...p }) => p) };
+    montar(r);
+  }
+  timer = setTimeout(tique, 0);
+  atualizarBotao();
+};
+document.getElementById('passo').onclick = () => { pausar(); if (corrida) corrida.pistas.forEach(avancar); };
+document.getElementById('final').onclick = () => {
+  if (!corrida) return;
+  pausar();
+  document.documentElement.style.setProperty('--dur', '0ms');
+  corrida.pistas.forEach(p => { while (!p.feito) avancar(p); });
+  requestAnimationFrame(ajustarVelocidade);
+};
+document.getElementById('vel').oninput = ajustarVelocidade;
+document.getElementById('form').onsubmit = e => { e.preventDefault(); sortear(); };
+['n', 'chave', 'ordem'].forEach(id => document.getElementById(id).onchange = sortear);
+
+ajustarVelocidade();
+sortear();
+</script>
+{% endblock %}

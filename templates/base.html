@@ -50,7 +50,7 @@
         </div>
       </div>
       <nav class="-mb-px flex gap-1 overflow-x-auto text-sm font-medium">
-        {% set abas = [('busca', '/', 'Aluno'), ('turmas', '/turmas', 'Matrícula em turmas'), ('ranking', '/ranking', 'Ranking IRA'), ('benchmark', '/benchmark', 'Benchmark')] %}
+        {% set abas = [('busca', '/', 'Aluno'), ('turmas', '/turmas', 'Matrícula em turmas'), ('ranking', '/ranking', 'Ranking IRA'), ('benchmark', '/benchmark', 'Benchmark'), ('corrida', '/corrida', 'Corrida')] %}
         {% for id, href, rotulo in abas %}
           <a href="{{ href }}" class="whitespace-nowrap rounded-t-lg px-4 py-2.5 transition {{ 'bg-[#f4f7fb] text-sigaa-800' if ativo == id else 'text-sigaa-100 hover:bg-white/10' }}">{{ rotulo }}</a>
         {% endfor %}

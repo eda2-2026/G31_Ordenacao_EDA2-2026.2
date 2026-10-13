@@ -20,6 +20,7 @@ from ordenacao import ALGORITMOS, Metricas, merge_sort, ordenar
 QTD_PADRAO = 100_000
 LIMITE_BENCHMARK = 100_000
 LIMITE_QUADRATICO = 10_000  # insertion sort acima disso demora demais em Python
+LIMITE_CORRIDA = 40  # acima disso não cabe na tela nem dá pra acompanhar a animação
 
 app = Flask(__name__)
 trava = threading.Lock()
@@ -133,6 +134,12 @@ def pagina_ranking():
 def pagina_benchmark():
     return render_template("benchmark.html", ativo="benchmark", algoritmos=ALGORITMOS,
                            limite_quadratico=LIMITE_QUADRATICO)
+
+
+@app.route("/corrida")
+def pagina_corrida():
+    return render_template("corrida.html", ativo="corrida", algoritmos=ALGORITMOS,
+                           limite=LIMITE_CORRIDA)
 
 
 # ---- API ----
@@ -316,6 +323,69 @@ def api_benchmark():
         "tempo_ms": round(tempo * 1000, 2),
         "correto": correto,
         **m.como_dict(),
+    })
+
+
+# chaves com MUITO empate (semestre, IRA com 1 casa) são as que mostram a
+# diferença entre estável e instável; a matrícula não empata nunca
+CHAVES_CORRIDA = {
+    "semestre": (lambda a: semestre_cursando(a["matricula"]), lambda v: f"{v}º"),
+    "ira": (lambda a: int(round(a["ira"] * 10)), lambda v: f"{v // 10},{v % 10}"),
+    "matricula": (lambda a: int(a["matricula"]), lambda v: str(v)[-4:]),
+}
+
+
+def passo_json(passo, indice):
+    """Troca o aluno gravado no passo pela posição dele na largada."""
+    tipo, *resto = passo
+    if tipo == "m":
+        aluno, posicao, vetor = resto
+        return [tipo, indice[id(aluno)], posicao, vetor]
+    return [tipo] + [indice[id(aluno)] for aluno in resto]
+
+
+@app.get("/api/corrida")
+def api_corrida():
+    """Ordena a mesma amostra com os 5 algoritmos gravando cada passo, pra
+    tela animar todos ao mesmo tempo, um passo por vez."""
+    chave_nome = request.args.get("chave", "semestre")
+    ordem = request.args.get("ordem", "aleatoria")
+    n = int(request.args.get("n", 16))
+    if chave_nome not in CHAVES_CORRIDA:
+        return jsonify({"erro": "Chave inválida."}), 400
+    n = max(4, min(n, LIMITE_CORRIDA))
+    chave, rotulo = CHAVES_CORRIDA[chave_nome]
+
+    largada = random.sample(Estado.base.alunos(), n)
+    if ordem != "aleatoria":
+        largada = merge_sort(largada, chave=chave, reverso=(ordem == "decrescente"))
+    indice = {id(a): i for i, a in enumerate(largada)}
+
+    pistas = []
+    for id_alg, alg in ALGORITMOS.items():
+        m = Metricas()
+        m.passos = []
+        ordenar(id_alg, largada, chave=chave, metricas=m)
+        pistas.append({
+            "algoritmo": id_alg,
+            "nome": alg["nome"],
+            "estavel": alg["estavel"],
+            "complexidade": alg["complexidade"],
+            "memoria_extra": id_alg in ("merge", "radix"),
+            "passos": [passo_json(p, indice) for p in m.passos],
+            **m.como_dict(),
+        })
+    return jsonify({
+        "chave": chave_nome,
+        "alunos": [{
+            "nome": a["nome"],
+            "matricula": a["matricula"],
+            "pokemon_id": a["pokemon_id"],
+            "shiny": a["shiny"],
+            "valor": chave(a),
+            "rotulo": rotulo(chave(a)),
+        } for a in largada],
+        "pistas": pistas,
     })
 
 

@@ -8,6 +8,11 @@ comparações na busca.
 
 Estáveis (mantêm a ordem original entre chaves iguais): merge, insertion, radix.
 Instáveis: quick, heap.
+
+Pra tela "Corrida", o Metricas também pode gravar cada passo (comparação,
+troca, movimentação) numa lista, que o navegador depois anima. Os passos
+guardam o próprio elemento (não a posição), pra dar pra acompanhar cada aluno.
+Fora da corrida `passos` fica None e nada é gravado.
 """
 
 import random
@@ -17,6 +22,14 @@ class Metricas:
     def __init__(self):
         self.comparacoes = 0
         self.movimentacoes = 0  # escritas/trocas de elementos na lista
+        # passos pra animação (só a corrida liga). Tipos:
+        #   ("c", a, b)            comparou a com b
+        #   ("t", a, b)            trocou a e b de lugar
+        #   ("m", a, pos, vetor)   escreveu a na posição pos (vetor 0 = principal, 1 = auxiliar)
+        #   ("v",)                 fim da passada: o auxiliar vira o principal
+        #   ("l", a)               levantou a da lista (insertion)
+        #   ("p", a)               a é o pivô (quick)
+        self.passos = None
 
     def como_dict(self):
         return {"comparacoes": self.comparacoes, "movimentacoes": self.movimentacoes}
@@ -39,6 +52,7 @@ def _vem_antes(reverso):
 
 def merge_sort(lista, chave=_identidade, reverso=False, metricas=None):
     m = metricas or Metricas()
+    passos = m.passos
     antes = _vem_antes(reverso)
     # calcula a chave uma vez só por elemento, e não a cada comparação
     itens = [(chave(x), x) for x in lista]
@@ -55,6 +69,8 @@ def merge_sort(lista, chave=_identidade, reverso=False, metricas=None):
             i, j, k = inicio, meio, inicio
             while i < meio and j < fim:
                 m.comparacoes += 1
+                if passos is not None:
+                    passos.append(("c", origem[j][1], origem[i][1]))
                 # só pega da direita se ela vier ESTRITAMENTE antes; no empate
                 # pega da esquerda, que é quem estava antes na lista original
                 if antes(origem[j][0], origem[i][0]):
@@ -63,18 +79,26 @@ def merge_sort(lista, chave=_identidade, reverso=False, metricas=None):
                 else:
                     destino[k] = origem[i]
                     i += 1
+                if passos is not None:
+                    passos.append(("m", destino[k][1], k, 1))
                 k += 1
                 m.movimentacoes += 1
             while i < meio:
                 destino[k] = origem[i]
+                if passos is not None:
+                    passos.append(("m", destino[k][1], k, 1))
                 i += 1
                 k += 1
                 m.movimentacoes += 1
             while j < fim:
                 destino[k] = origem[j]
+                if passos is not None:
+                    passos.append(("m", destino[k][1], k, 1))
                 j += 1
                 k += 1
                 m.movimentacoes += 1
+        if passos is not None:
+            passos.append(("v",))
         origem, destino = destino, origem
         largura *= 2
     return [x for _, x in origem]
@@ -88,6 +112,7 @@ def quick_sort(lista, chave=_identidade, reverso=False, metricas=None):
     (ex: ordenar por "formando", que só tem 2 valores), mas as trocas de longa
     distância embaralham quem tem chave igual - por isso ele NÃO é estável."""
     m = metricas or Metricas()
+    passos = m.passos
     antes = _vem_antes(reverso)
     itens = [(chave(x), x) for x in lista]
 
@@ -98,18 +123,29 @@ def quick_sort(lista, chave=_identidade, reverso=False, metricas=None):
             continue
         p = random.randint(inicio, fim)
         pivo = itens[p][0]
+        if passos is not None:
+            elemento_pivo = itens[p][1]
+            passos.append(("p", elemento_pivo))
         menor, i, maior = inicio, inicio, fim
         while i <= maior:
             k = itens[i][0]
             m.comparacoes += 1
+            if passos is not None:
+                passos.append(("c", itens[i][1], elemento_pivo))
             if antes(k, pivo):
+                if passos is not None:
+                    passos.append(("t", itens[menor][1], itens[i][1]))
                 itens[menor], itens[i] = itens[i], itens[menor]
                 m.movimentacoes += 1
                 menor += 1
                 i += 1
             else:
                 m.comparacoes += 1
+                if passos is not None:
+                    passos.append(("c", elemento_pivo, itens[i][1]))
                 if antes(pivo, k):
+                    if passos is not None:
+                        passos.append(("t", itens[i][1], itens[maior][1]))
                     itens[i], itens[maior] = itens[maior], itens[i]
                     m.movimentacoes += 1
                     maior -= 1
@@ -124,6 +160,7 @@ def quick_sort(lista, chave=_identidade, reverso=False, metricas=None):
 
 def heap_sort(lista, chave=_identidade, reverso=False, metricas=None):
     m = metricas or Metricas()
+    passos = m.passos
     antes = _vem_antes(reverso)
     itens = [(chave(x), x) for x in lista]
     n = len(itens)
@@ -136,11 +173,17 @@ def heap_sort(lista, chave=_identidade, reverso=False, metricas=None):
                 return
             if filho + 1 < tamanho:
                 m.comparacoes += 1
+                if passos is not None:
+                    passos.append(("c", itens[filho][1], itens[filho + 1][1]))
                 if antes(itens[filho][0], itens[filho + 1][0]):
                     filho += 1
             m.comparacoes += 1
+            if passos is not None:
+                passos.append(("c", itens[raiz][1], itens[filho][1]))
             if not antes(itens[raiz][0], itens[filho][0]):
                 return
+            if passos is not None:
+                passos.append(("t", itens[raiz][1], itens[filho][1]))
             itens[raiz], itens[filho] = itens[filho], itens[raiz]
             m.movimentacoes += 1
             raiz = filho
@@ -148,6 +191,8 @@ def heap_sort(lista, chave=_identidade, reverso=False, metricas=None):
     for raiz in range(n // 2 - 1, -1, -1):
         descer(raiz, n)
     for fim in range(n - 1, 0, -1):
+        if passos is not None:
+            passos.append(("t", itens[0][1], itens[fim][1]))
         itens[0], itens[fim] = itens[fim], itens[0]
         m.movimentacoes += 1
         descer(0, fim)
@@ -158,19 +203,28 @@ def heap_sort(lista, chave=_identidade, reverso=False, metricas=None):
 
 def insertion_sort(lista, chave=_identidade, reverso=False, metricas=None):
     m = metricas or Metricas()
+    passos = m.passos
     antes = _vem_antes(reverso)
     itens = [(chave(x), x) for x in lista]
     for i in range(1, len(itens)):
         atual = itens[i]
+        if passos is not None:
+            passos.append(("l", atual[1]))
         j = i - 1
         while j >= 0:
             m.comparacoes += 1
+            if passos is not None:
+                passos.append(("c", atual[1], itens[j][1]))
             if not antes(atual[0], itens[j][0]):
                 break
             itens[j + 1] = itens[j]
+            if passos is not None:
+                passos.append(("m", itens[j][1], j + 1, 0))
             m.movimentacoes += 1
             j -= 1
         itens[j + 1] = atual
+        if passos is not None:
+            passos.append(("m", atual[1], j + 1, 0))
         m.movimentacoes += 1
     return [x for _, x in itens]
 
@@ -182,6 +236,7 @@ def radix_sort(lista, chave=_identidade, reverso=False, metricas=None, base=10):
     Ordena dígito por dígito, do menos significativo pro mais, com um counting
     sort estável em cada passada - nenhuma comparação entre elementos."""
     m = metricas or Metricas()
+    passos = m.passos
     itens = [(chave(x), x) for x in lista]
     if not itens:
         return []
@@ -205,8 +260,12 @@ def radix_sort(lista, chave=_identidade, reverso=False, metricas=None, base=10):
         for item in itens:  # percorre em ordem: é isso que mantém a estabilidade
             d = (item[0] // divisor) % base
             saida[posicao[d]] = item
+            if passos is not None:
+                passos.append(("m", item[1], posicao[d], 1))
             posicao[d] += 1
             m.movimentacoes += 1
+        if passos is not None:
+            passos.append(("v",))
         itens = saida
         divisor *= base
         if divisor > maior:
