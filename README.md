@@ -115,8 +115,7 @@ Na primeira execução o sistema gera uma base de 100.000 alunos, 16 turmas e um
 
 ## Vídeo de apresentação
 
-- Vídeo do João Marcos apresentando o projeto: _(link)_
-- Vídeo da Ana Luisa apresentando o projeto: _(link)_
+- Vídeo da dupla apresentando o projeto (João Marcos e depois Ana Luisa): https://youtu.be/7B2kvb_NX3o
 
 ## Capturas de tela
 
